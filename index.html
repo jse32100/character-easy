@@ -1,0 +1,414 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>캐 굴리기 난이도표</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
+<style>
+  :root { --bg: #f4f5f7; --ink: #111; --accent: #2563eb; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: #e6e8ec;
+    font-family: Pretendard, "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+    color: var(--ink);
+    -webkit-text-size-adjust: 100%;
+  }
+
+  /* 상단 툴바 */
+  .toolbar {
+    position: sticky; top: 0; z-index: 20;
+    display: flex; align-items: center; gap: 8px;
+    max-width: 1000px; margin: 0 auto; padding: 10px 12px;
+    background: rgba(230, 232, 236, .92);
+    backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  }
+  .toolbar .hint { flex: 1; font-size: 13px; color: #5b6170; line-height: 1.35; }
+  .btn {
+    font: inherit; font-size: 14px; font-weight: 600;
+    border: 0; border-radius: 10px; padding: 10px 14px; cursor: pointer;
+    background: #fff; color: var(--ink); white-space: nowrap;
+  }
+  .btn.primary { background: var(--ink); color: #fff; }
+  .btn:disabled { opacity: .5; cursor: progress; }
+
+  .wrap { max-width: 1000px; margin: 0 auto; padding: 0 12px 40px; }
+
+  /* 시트: 원본 1568×2380 좌표계를 그대로 사용 */
+  .sheet {
+    container-type: inline-size;
+    position: relative; width: 100%;
+    aspect-ratio: 1568 / 2380;
+    background: var(--bg);
+    box-shadow: 0 2px 16px rgba(0,0,0,.08);
+    overflow: hidden;
+    --u: calc(100cqw / 1568);
+  }
+  .sheet > * { position: absolute; }
+  #bg { left: 0; top: 0; width: 100%; height: 100%; }
+
+  .photo {
+    cursor: pointer; overflow: hidden; background: #fff;
+    display: grid; place-items: center;
+  }
+  .photo img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: none; }
+  .photo.has img { display: block; }
+  .photo .plus { font-size: calc(var(--u) * 64); font-weight: 300; color: #d2d6dd; line-height: 1; user-select: none; }
+  .photo.has .plus { display: none; }
+  .photo:hover { background: #f8f9fb; }
+  .photo.drag { box-shadow: inset 0 0 0 calc(var(--u) * 6) var(--accent); }
+  .photo .del {
+    position: absolute; top: 4px; right: 4px;
+    width: clamp(18px, calc(var(--u) * 40), 28px); height: clamp(18px, calc(var(--u) * 40), 28px);
+    border: 0; border-radius: 50%; padding: 0; cursor: pointer;
+    background: rgba(0,0,0,.6); color: #fff;
+    font-size: clamp(12px, calc(var(--u) * 26), 18px); line-height: 1;
+    display: none;
+  }
+  .photo.has .del { display: grid; place-items: center; }
+  @media (hover: hover) {
+    .photo.has .del { opacity: 0; transition: opacity .15s; }
+    .photo.has:hover .del { opacity: 1; }
+  }
+
+  .sheet input {
+    border: 0; outline: 0; margin: 0; padding: 0; border-radius: 0;
+    background: transparent; color: var(--ink);
+    font-family: inherit; -webkit-appearance: none; appearance: none;
+  }
+  .sheet input::placeholder { color: #c2c7cf; }
+  .sheet input:focus { background: rgba(37, 99, 235, .07); }
+  .name { text-align: center; font-weight: 500; font-size: calc(var(--u) * 26); }
+  .sec { font-weight: 500; font-size: calc(var(--u) * 32); }
+  .sheet input[readonly] { cursor: pointer; }
+
+  /* 모바일 입력용 팝업 */
+  dialog {
+    border: 0; border-radius: 16px; padding: 20px;
+    width: min(420px, calc(100vw - 32px));
+    box-shadow: 0 10px 40px rgba(0,0,0,.25);
+  }
+  dialog::backdrop { background: rgba(0,0,0,.35); }
+  dialog label { display: block; font-size: 14px; font-weight: 600; color: #5b6170; margin-bottom: 10px; }
+  dialog input {
+    width: 100%; font: inherit; font-size: 17px; padding: 12px;
+    border: 1.5px solid #d6d9df; border-radius: 10px; outline: 0;
+  }
+  dialog input:focus { border-color: var(--ink); }
+  dialog .row { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+  dialog .btn { background: #eef0f3; }
+  dialog .btn.primary { background: var(--ink); }
+
+  .toast {
+    position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%);
+    background: rgba(17,17,17,.88); color: #fff; font-size: 14px;
+    padding: 10px 16px; border-radius: 999px; opacity: 0; pointer-events: none;
+    transition: opacity .2s; z-index: 50;
+  }
+  .toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+
+<div class="toolbar">
+  <div class="hint">빈 칸을 눌러 이미지 추가 · 아래 칸에 이름 입력</div>
+  <button class="btn" id="resetBtn" type="button">초기화</button>
+  <button class="btn primary" id="saveBtn" type="button">PNG 저장</button>
+</div>
+
+<div class="wrap">
+  <div class="sheet" id="sheet">
+    <canvas id="bg"></canvas>
+  </div>
+</div>
+
+<input type="file" id="file" accept="image/*" hidden>
+
+<dialog id="editor">
+  <form method="dialog" id="edForm">
+    <label id="edLabel" for="edInput"></label>
+    <input id="edInput" maxlength="40" autocomplete="off">
+    <div class="row">
+      <button class="btn" type="button" id="edCancel">취소</button>
+      <button class="btn primary" type="submit">확인</button>
+    </div>
+  </form>
+</dialog>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(() => {
+  // ---- 레이아웃 (원본 이미지 1568×2380 기준 좌표) ----
+  const L = {
+    W: 1568, H: 2380,
+    cols: [211, 518, 825, 1132],
+    rows: [469, 944, 1419, 1894],
+    bw: 289, bh: 347, split: 288, lw: 3,
+    labelX: 250, right: 1420,
+  };
+  const LABELS = ['눈감고도 가능함:', '무난하게 가능함:', '노력해야 가능함:', '인생 마지막 끌어치기:'];
+  const BG = '#f4f5f7', INK = '#111111';
+  const F = 'Pretendard, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif';
+  const EXPORT_SCALE = 2; // 3136×4760 px
+
+  const $ = s => document.querySelector(s);
+  const sheet = $('#sheet'), bgCanvas = $('#bg'), fileInput = $('#file');
+  const cells = [], sections = [], secX = [];
+  const u = n => `calc(var(--u) * ${n})`;
+  const place = (el, x, y, w, h) => Object.assign(el.style, { left: u(x), top: u(y), width: u(w), height: u(h) });
+  const pos = i => ({ x: L.cols[i % 4], y: L.rows[Math.floor(i / 4)] });
+  const narrow = () => sheet.clientWidth < 700;
+
+  // ---- 그리기 ----
+  function drawBase(ctx) {
+    ctx.fillStyle = BG; ctx.fillRect(0, 0, L.W, L.H);
+
+    ctx.fillStyle = INK; ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+    ctx.font = `900 86px ${F}`;
+    ctx.fillText('이런 캐 굴리기가', 211, 232);
+    ctx.fillText('제일 쉬웠/어려웠어요', 211, 322);
+
+    ctx.font = `500 22px ${F}`; ctx.textAlign = 'right';
+    ctx.fillText('@Yami0i', 1419, 334);
+
+    // 화살표
+    ctx.strokeStyle = INK; ctx.lineWidth = 3; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    ctx.beginPath();
+    ctx.moveTo(130, 478); ctx.lineTo(130, 2238);
+    ctx.moveTo(112, 496); ctx.lineTo(130, 478); ctx.lineTo(148, 496);
+    ctx.moveTo(112, 2220); ctx.lineTo(130, 2238); ctx.lineTo(148, 2220);
+    ctx.stroke();
+
+    ctx.font = `600 34px ${F}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    [['쉬움', 648], ['어려움', 2066]].forEach(([t, y]) => {
+      ctx.lineWidth = 10; ctx.strokeStyle = BG; ctx.strokeText(t, 130, y);
+      ctx.fillStyle = INK; ctx.fillText(t, 130, y);
+    });
+
+    // 섹션 제목
+    L.rows.forEach((ry, r) => {
+      const cy = ry - 41;
+      ctx.fillStyle = INK; ctx.beginPath(); ctx.arc(226, cy, 15, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#fff'; ctx.font = `800 19px ${F}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(String(r + 1), 226, cy + 1);
+      ctx.fillStyle = INK; ctx.font = `600 35px ${F}`; ctx.textAlign = 'left';
+      ctx.fillText(LABELS[r], L.labelX, cy + 1);
+    });
+
+    // 칸 배경
+    ctx.fillStyle = '#fff';
+    for (let i = 0; i < 16; i++) { const { x, y } = pos(i); ctx.fillRect(x, y, L.bw, L.bh); }
+  }
+
+  function drawBorders(ctx) {
+    ctx.strokeStyle = INK; ctx.lineWidth = L.lw; ctx.lineCap = 'butt'; ctx.lineJoin = 'miter';
+    for (let i = 0; i < 16; i++) {
+      const { x, y } = pos(i), h = L.lw / 2;
+      ctx.strokeRect(x + h, y + h, L.bw - L.lw, L.bh - L.lw);
+      ctx.beginPath(); ctx.moveTo(x, y + L.split); ctx.lineTo(x + L.bw, y + L.split); ctx.stroke();
+    }
+  }
+
+  function drawCover(ctx, src, x, y, w, h) {
+    const sw = src.width, sh = src.height, r = Math.max(w / sw, h / sh);
+    const cw = w / r, ch = h / r;
+    ctx.drawImage(src, (sw - cw) / 2, (sh - ch) / 2, cw, ch, x, y, w, h);
+  }
+
+  function fitFont(ctx, text, weight, size, maxW, min = 12) {
+    let s = size;
+    do { ctx.font = `${weight} ${s}px ${F}`; if (ctx.measureText(text).width <= maxW) break; s -= 1; } while (s > min);
+  }
+
+  function drawPreview() {
+    const w = sheet.clientWidth; if (!w) return;
+    const dpr = Math.min(window.devicePixelRatio || 1, 3);
+    bgCanvas.width = Math.round(w * dpr);
+    bgCanvas.height = Math.round(w * L.H / L.W * dpr);
+    const ctx = bgCanvas.getContext('2d'), s = bgCanvas.width / L.W;
+    ctx.setTransform(s, 0, 0, s, 0, 0);
+    drawBase(ctx); drawBorders(ctx);
+  }
+
+  // ---- DOM 구성 ----
+  L.rows.forEach((ry, r) => {
+    const si = document.createElement('input');
+    si.className = 'sec'; si.placeholder = '여기에 적기'; si.maxLength = 40;
+    si.dataset.title = LABELS[r].replace(':', '');
+    sheet.append(si); sections.push(si);
+
+    L.cols.forEach((cx) => {
+      const zone = document.createElement('div');
+      zone.className = 'photo';
+      zone.innerHTML = '<img alt=""><span class="plus">+</span><button class="del" type="button" aria-label="이미지 삭제">×</button>';
+      place(zone, cx + 3, ry + 3, L.bw - 6, L.split - 4.5);
+
+      const name = document.createElement('input');
+      name.className = 'name'; name.placeholder = '이름'; name.maxLength = 30;
+      name.dataset.title = '캐릭터 이름';
+      place(name, cx + 3, ry + L.split + 1.5, L.bw - 6, L.bh - L.split - 4.5);
+
+      sheet.append(zone, name);
+      const cell = { zone, name, img: null };
+      cells.push(cell);
+
+      zone.addEventListener('click', e => {
+        if (e.target.closest('.del')) { e.stopPropagation(); setImg(cell, null); return; }
+        current = cell; fileInput.click();
+      });
+      zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag'); });
+      zone.addEventListener('dragleave', () => zone.classList.remove('drag'));
+      zone.addEventListener('drop', e => {
+        e.preventDefault(); zone.classList.remove('drag');
+        const f = [...(e.dataTransfer?.files || [])].find(f => f.type.startsWith('image/'));
+        if (f) loadInto(cell, f);
+      });
+    });
+  });
+
+  function placeSections() {
+    const c = document.createElement('canvas').getContext('2d');
+    c.font = `600 35px ${F}`;
+    sections.forEach((si, r) => {
+      const cy = L.rows[r] - 41;
+      const x = L.labelX + c.measureText(LABELS[r]).width + 12;
+      secX[r] = x;
+      place(si, x, cy - 25, L.right - x, 50);
+    });
+  }
+
+  // ---- 이미지 ----
+  let current = null;
+  fileInput.addEventListener('change', () => {
+    const f = fileInput.files[0];
+    if (f && current) loadInto(current, f);
+    fileInput.value = '';
+  });
+
+  function loadInto(cell, file) {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      const MAX = 1600, r = Math.min(1, MAX / Math.max(img.naturalWidth, img.naturalHeight));
+      const c = document.createElement('canvas');
+      c.width = Math.max(1, Math.round(img.naturalWidth * r));
+      c.height = Math.max(1, Math.round(img.naturalHeight * r));
+      const ctx = c.getContext('2d');
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(url);
+      setImg(cell, c);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); toast('이미지를 열 수 없어요'); };
+    img.src = url;
+  }
+
+  function setImg(cell, c) {
+    cell.img = c;
+    const el = cell.zone.querySelector('img');
+    el.src = c ? c.toDataURL('image/jpeg', 0.9) : '';
+    cell.zone.classList.toggle('has', !!c);
+  }
+
+  // ---- 좁은 화면: 팝업으로 입력 ----
+  const editor = $('#editor'), edInput = $('#edInput'), edLabel = $('#edLabel');
+  let editing = null;
+  const allInputs = () => [...sections, ...cells.map(c => c.name)];
+
+  function syncReadonly() { const n = narrow(); allInputs().forEach(i => { i.readOnly = n; }); }
+
+  allInputs().forEach(inp => inp.addEventListener('click', () => {
+    if (!inp.readOnly) return;
+    editing = inp;
+    edLabel.textContent = inp.dataset.title;
+    edInput.value = inp.value;
+    edInput.maxLength = inp.maxLength;
+    editor.showModal();
+    setTimeout(() => edInput.focus(), 50);
+  }));
+  $('#edForm').addEventListener('submit', () => { if (editing) editing.value = edInput.value; editing = null; });
+  $('#edCancel').addEventListener('click', () => { editing = null; editor.close(); });
+
+  // ---- PNG 저장 ----
+  const saveBtn = $('#saveBtn');
+  saveBtn.addEventListener('click', async () => {
+    saveBtn.disabled = true;
+    try {
+      await fontsReady;
+      const S = EXPORT_SCALE, cv = document.createElement('canvas');
+      cv.width = L.W * S; cv.height = L.H * S;
+      const ctx = cv.getContext('2d');
+      ctx.scale(S, S);
+      ctx.imageSmoothingQuality = 'high';
+      drawBase(ctx);
+      cells.forEach((cell, i) => {
+        if (!cell.img) return;
+        const { x, y } = pos(i);
+        drawCover(ctx, cell.img, x + 3, y + 3, L.bw - 6, L.split - 4.5);
+      });
+      drawBorders(ctx);
+
+      ctx.fillStyle = INK; ctx.textBaseline = 'middle';
+      ctx.textAlign = 'center';
+      cells.forEach((cell, i) => {
+        const t = cell.name.value.trim(); if (!t) return;
+        const { x, y } = pos(i);
+        fitFont(ctx, t, 500, 26, L.bw - 20);
+        ctx.fillText(t, x + L.bw / 2, y + L.split + (L.bh - L.split) / 2 + 1);
+      });
+      ctx.textAlign = 'left';
+      sections.forEach((si, r) => {
+        const t = si.value.trim(); if (!t) return;
+        fitFont(ctx, t, 500, 32, L.right - secX[r]);
+        ctx.fillText(t, secX[r], L.rows[r] - 41 + 1);
+      });
+
+      const blob = await new Promise(res => cv.toBlob(res, 'image/png'));
+      const fname = '캐굴리기_난이도표.png';
+      const file = new File([blob], fname, { type: 'image/png' });
+      const touch = matchMedia('(pointer: coarse)').matches;
+
+      if (touch && navigator.canShare && navigator.canShare({ files: [file] })) {
+        try { await navigator.share({ files: [file] }); return; }
+        catch (e) { if (e.name === 'AbortError') return; }
+      }
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = fname;
+      document.body.append(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+      toast('저장했어요');
+    } catch (e) {
+      console.error(e); toast('저장 중 문제가 생겼어요');
+    } finally {
+      saveBtn.disabled = false;
+    }
+  });
+
+  $('#resetBtn').addEventListener('click', () => {
+    if (!confirm('입력한 이미지와 글을 모두 지울까요?')) return;
+    cells.forEach(c => { setImg(c, null); c.name.value = ''; });
+    sections.forEach(s => s.value = '');
+  });
+
+  let toastTimer;
+  function toast(msg) {
+    const t = $('#toast'); t.textContent = msg; t.classList.add('show');
+    clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 1800);
+  }
+
+  // ---- 시작 ----
+  const fontsReady = Promise.all(
+    ['900 86px', '800 19px', '600 35px', '600 34px', '500 32px', '500 26px', '500 22px']
+      .map(f => document.fonts.load(`${f} Pretendard`))
+  ).catch(() => {});
+
+  placeSections(); drawPreview(); syncReadonly();
+  fontsReady.then(() => { placeSections(); drawPreview(); });
+  new ResizeObserver(() => { drawPreview(); syncReadonly(); }).observe(sheet);
+})();
+</script>
+</body>
+</html>

@@ -17,21 +17,40 @@
   }
 
   /* 상단 툴바 */
-  .toolbar {
+  .topbar {
     position: sticky; top: 0; z-index: 20;
-    display: flex; align-items: center; gap: 8px;
-    max-width: 1000px; margin: 0 auto; padding: 10px 12px;
-    background: rgba(230, 232, 236, .92);
+    background: rgba(230, 232, 236, .94);
     backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
   }
-  .toolbar .hint { flex: 1; font-size: 13px; color: #5b6170; line-height: 1.35; }
+  .toolbar, .tools {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    max-width: 1000px; margin: 0 auto; padding: 8px 12px;
+  }
+  .tools { padding-top: 0; }
+  .toolbar .hint { flex: 1; min-width: 160px; font-size: 13px; color: #5b6170; line-height: 1.35; }
   .btn {
     font: inherit; font-size: 14px; font-weight: 600;
     border: 0; border-radius: 10px; padding: 10px 14px; cursor: pointer;
     background: #fff; color: var(--ink); white-space: nowrap;
   }
+  .btn.sm { padding: 7px 10px; font-size: 13px; }
   .btn.primary { background: var(--ink); color: #fff; }
+  .btn.danger { background: #fdecec; color: #c62828; }
   .btn:disabled { opacity: .5; cursor: progress; }
+
+  .seg { display: inline-flex; background: #fff; border-radius: 10px; padding: 3px; gap: 2px; }
+  .seg button {
+    font: inherit; font-size: 13px; font-weight: 600; border: 0; background: transparent;
+    padding: 6px 10px; border-radius: 8px; cursor: pointer; color: #4b5160; white-space: nowrap;
+  }
+  .seg button.on { background: var(--ink); color: #fff; }
+
+  .swatches { display: inline-flex; gap: 5px; align-items: center; }
+  .sw {
+    width: 24px; height: 24px; border-radius: 50%; padding: 0; cursor: pointer;
+    border: 2px solid rgba(0,0,0,.15);
+  }
+  .sw.on { box-shadow: 0 0 0 2px #e6e8ec, 0 0 0 4px var(--ink); }
 
   .wrap { max-width: 1000px; margin: 0 auto; padding: 0 12px 40px; }
 
@@ -46,7 +65,10 @@
     --u: calc(100cqw / 1568);
   }
   .sheet > * { position: absolute; }
-  #bg { left: 0; top: 0; width: 100%; height: 100%; }
+  #bg, #ink { left: 0; top: 0; width: 100%; height: 100%; }
+  #ink { pointer-events: none; }
+  .sheet[data-mode="pen"] #ink, .sheet[data-mode="erase"] #ink { pointer-events: auto; touch-action: none; cursor: crosshair; }
+  .sheet[data-mode="text"] #ink { pointer-events: auto; cursor: text; }
 
   .photo {
     cursor: pointer; overflow: hidden; background: #fff;
@@ -83,7 +105,16 @@
   .sec { font-weight: 500; font-size: calc(var(--u) * 32); }
   .sheet input[readonly] { cursor: pointer; }
 
-  /* 모바일 입력용 팝업 */
+  /* 자유 글자 */
+  .note {
+    white-space: pre; line-height: 1.25; font-weight: 600;
+    cursor: move; touch-action: none; user-select: none; -webkit-user-select: none;
+    border-radius: 4px;
+  }
+  .note:hover { outline: 1px dashed rgba(37, 99, 235, .6); outline-offset: 2px; }
+  .sheet[data-mode="pen"] .note, .sheet[data-mode="erase"] .note { pointer-events: none; }
+
+  /* 팝업 */
   dialog {
     border: 0; border-radius: 16px; padding: 20px;
     width: min(420px, calc(100vw - 32px));
@@ -91,14 +122,19 @@
   }
   dialog::backdrop { background: rgba(0,0,0,.35); }
   dialog label { display: block; font-size: 14px; font-weight: 600; color: #5b6170; margin-bottom: 10px; }
-  dialog input {
+  dialog input, dialog textarea {
     width: 100%; font: inherit; font-size: 17px; padding: 12px;
-    border: 1.5px solid #d6d9df; border-radius: 10px; outline: 0;
+    border: 1.5px solid #d6d9df; border-radius: 10px; outline: 0; resize: vertical;
   }
-  dialog input:focus { border-color: var(--ink); }
-  dialog .row { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+  dialog input:focus, dialog textarea:focus { border-color: var(--ink); }
+  dialog .row { display: flex; align-items: center; gap: 8px; margin-top: 14px; }
+  dialog .row .grow { flex: 1; }
+  dialog .opts { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
   dialog .btn { background: #eef0f3; }
   dialog .btn.primary { background: var(--ink); }
+  dialog .btn.danger { background: #fdecec; }
+  dialog .sw.on { box-shadow: 0 0 0 2px #fff, 0 0 0 4px var(--ink); }
+  dialog .seg { background: #eef0f3; }
 
   .toast {
     position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%);
@@ -111,14 +147,31 @@
 </head>
 <body>
 
-<div class="toolbar">
-  <div class="hint">빈 칸을 눌러 이미지 추가 · 아래 칸에 이름 입력</div>
-  <button class="btn" id="resetBtn" type="button">초기화</button>
-  <button class="btn primary" id="saveBtn" type="button">PNG 저장</button>
+<div class="topbar">
+  <div class="toolbar">
+    <div class="hint" id="hint"></div>
+    <button class="btn" id="resetBtn" type="button">초기화</button>
+    <button class="btn primary" id="saveBtn" type="button">PNG 저장</button>
+  </div>
+  <div class="tools">
+    <div class="seg" id="modes">
+      <button type="button" data-mode="edit" class="on">기본</button>
+      <button type="button" data-mode="pen">펜</button>
+      <button type="button" data-mode="erase">지우개</button>
+      <button type="button" data-mode="text">글자</button>
+    </div>
+    <div class="swatches" id="penColors"></div>
+    <div class="seg" id="sizes">
+      <button type="button" data-size="4">얇게</button>
+      <button type="button" data-size="8" class="on">보통</button>
+      <button type="button" data-size="16">굵게</button>
+    </div>
+    <button class="btn sm" id="undoBtn" type="button">되돌리기</button>
+  </div>
 </div>
 
 <div class="wrap">
-  <div class="sheet" id="sheet">
+  <div class="sheet" id="sheet" data-mode="edit">
     <canvas id="bg"></canvas>
   </div>
 </div>
@@ -130,7 +183,29 @@
     <label id="edLabel" for="edInput"></label>
     <input id="edInput" maxlength="40" autocomplete="off">
     <div class="row">
+      <span class="grow"></span>
       <button class="btn" type="button" id="edCancel">취소</button>
+      <button class="btn primary" type="submit">확인</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="noteDlg">
+  <form method="dialog" id="noteForm">
+    <label for="noteText">개인 멘트</label>
+    <textarea id="noteText" rows="3" maxlength="200" placeholder="자유롭게 적어주세요 (줄바꿈 가능)"></textarea>
+    <div class="opts">
+      <div class="swatches" id="noteColors"></div>
+      <div class="seg" id="noteSizes">
+        <button type="button" data-size="28">작게</button>
+        <button type="button" data-size="40">보통</button>
+        <button type="button" data-size="56">크게</button>
+      </div>
+    </div>
+    <div class="row">
+      <button class="btn danger" type="button" id="noteDel">삭제</button>
+      <span class="grow"></span>
+      <button class="btn" type="button" id="noteCancel">취소</button>
       <button class="btn primary" type="submit">확인</button>
     </div>
   </form>
@@ -149,17 +224,28 @@
     labelX: 250, right: 1420,
   };
   const LABELS = ['눈감고도 가능함:', '무난하게 가능함:', '노력해야 가능함:', '인생 마지막 끌어치기:'];
+  const COLORS = ['#111111', '#ffffff', '#e53935', '#ec407a', '#fb8c00', '#fdd835', '#43a047', '#1e88e5', '#8e24aa'];
   const BG = '#f4f5f7', INK = '#111111';
   const F = 'Pretendard, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif';
   const EXPORT_SCALE = 2; // 3136×4760 px
+  const HINTS = {
+    edit: '빈 칸을 눌러 이미지 추가 · 아래 칸에 이름 입력 · 넣은 글자는 끌어서 이동, 눌러서 수정',
+    pen: '펜: 아무 데나 그리기 (휴대폰에서 스크롤은 기본 모드에서)',
+    erase: '지우개: 그린 선만 지워져요',
+    text: '글자: 원하는 위치를 눌러 멘트 넣기',
+  };
 
   const $ = s => document.querySelector(s);
   const sheet = $('#sheet'), bgCanvas = $('#bg'), fileInput = $('#file');
   const cells = [], sections = [], secX = [];
+  const strokes = [], notes = [], history = [];
   const u = n => `calc(var(--u) * ${n})`;
   const place = (el, x, y, w, h) => Object.assign(el.style, { left: u(x), top: u(y), width: u(w), height: u(h) });
   const pos = i => ({ x: L.cols[i % 4], y: L.rows[Math.floor(i / 4)] });
   const narrow = () => sheet.clientWidth < 700;
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+
+  let mode = 'edit', penColor = COLORS[2], penSize = 8;
 
   // ---- 그리기 ----
   function drawBase(ctx) {
@@ -173,7 +259,6 @@
     ctx.font = `500 22px ${F}`; ctx.textAlign = 'right';
     ctx.fillText('@Yami0i', 1419, 334);
 
-    // 화살표
     ctx.strokeStyle = INK; ctx.lineWidth = 3; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
     ctx.beginPath();
     ctx.moveTo(130, 478); ctx.lineTo(130, 2238);
@@ -187,7 +272,6 @@
       ctx.fillStyle = INK; ctx.fillText(t, 130, y);
     });
 
-    // 섹션 제목
     L.rows.forEach((ry, r) => {
       const cy = ry - 41;
       ctx.fillStyle = INK; ctx.beginPath(); ctx.arc(226, cy, 15, 0, Math.PI * 2); ctx.fill();
@@ -197,7 +281,6 @@
       ctx.fillText(LABELS[r], L.labelX, cy + 1);
     });
 
-    // 칸 배경
     ctx.fillStyle = '#fff';
     for (let i = 0; i < 16; i++) { const { x, y } = pos(i); ctx.fillRect(x, y, L.bw, L.bh); }
   }
@@ -222,14 +305,61 @@
     do { ctx.font = `${weight} ${s}px ${F}`; if (ctx.measureText(text).width <= maxW) break; s -= 1; } while (s > min);
   }
 
+  // 펜 선
+  function styleStroke(ctx, s) {
+    ctx.globalCompositeOperation = s.erase ? 'destination-out' : 'source-over';
+    ctx.strokeStyle = s.color; ctx.lineWidth = s.size;
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  }
+  function drawStroke(ctx, s) {
+    styleStroke(ctx, s);
+    const p = s.pts;
+    ctx.beginPath(); ctx.moveTo(p[0][0], p[0][1]);
+    if (p.length === 1) ctx.lineTo(p[0][0] + 0.01, p[0][1]);
+    for (let i = 1; i < p.length; i++) ctx.lineTo(p[i][0], p[i][1]);
+    ctx.stroke();
+    ctx.globalCompositeOperation = 'source-over';
+  }
+  function drawSeg(s, a, b) {
+    styleStroke(inkCtx, s);
+    inkCtx.beginPath(); inkCtx.moveTo(a[0], a[1]);
+    inkCtx.lineTo(b[0] + (a === b ? 0.01 : 0), b[1]);
+    inkCtx.stroke();
+    inkCtx.globalCompositeOperation = 'source-over';
+  }
+
+  function drawNotes(ctx) {
+    ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+    notes.forEach(n => {
+      ctx.font = `600 ${n.size}px ${F}`; ctx.fillStyle = n.color;
+      const lh = n.size * 1.25;
+      n.text.split('\n').forEach((line, i) => ctx.fillText(line, n.x, n.y + (i + 0.5) * lh));
+    });
+  }
+
+  // ---- 미리보기 ----
+  const ink = document.createElement('canvas');
+  ink.id = 'ink';
+  sheet.append(ink);
+  const inkCtx = ink.getContext('2d');
+
   function drawPreview() {
     const w = sheet.clientWidth; if (!w) return;
     const dpr = Math.min(window.devicePixelRatio || 1, 3);
-    bgCanvas.width = Math.round(w * dpr);
-    bgCanvas.height = Math.round(w * L.H / L.W * dpr);
-    const ctx = bgCanvas.getContext('2d'), s = bgCanvas.width / L.W;
+    const cw = Math.round(w * dpr), ch = Math.round(w * L.H / L.W * dpr), s = cw / L.W;
+    bgCanvas.width = cw; bgCanvas.height = ch;
+    const ctx = bgCanvas.getContext('2d');
     ctx.setTransform(s, 0, 0, s, 0, 0);
     drawBase(ctx); drawBorders(ctx);
+    ink.width = cw; ink.height = ch;
+    renderInk();
+  }
+  function renderInk() {
+    const s = ink.width / L.W;
+    inkCtx.setTransform(1, 0, 0, 1, 0, 0);
+    inkCtx.clearRect(0, 0, ink.width, ink.height);
+    inkCtx.setTransform(s, 0, 0, s, 0, 0);
+    strokes.forEach(st => drawStroke(inkCtx, st));
   }
 
   // ---- DOM 구성 ----
@@ -237,7 +367,7 @@
     const si = document.createElement('input');
     si.className = 'sec'; si.placeholder = '여기에 적기'; si.maxLength = 40;
     si.dataset.title = LABELS[r].replace(':', '');
-    sheet.append(si); sections.push(si);
+    sheet.insertBefore(si, ink); sections.push(si);
 
     L.cols.forEach((cx) => {
       const zone = document.createElement('div');
@@ -250,7 +380,7 @@
       name.dataset.title = '캐릭터 이름';
       place(name, cx + 3, ry + L.split + 1.5, L.bw - 6, L.bh - L.split - 4.5);
 
-      sheet.append(zone, name);
+      sheet.insertBefore(zone, ink); sheet.insertBefore(name, ink);
       const cell = { zone, name, img: null };
       cells.push(cell);
 
@@ -278,6 +408,171 @@
       place(si, x, cy - 25, L.right - x, 50);
     });
   }
+
+  // ---- 툴바 ----
+  function makeSwatches(box, get, set) {
+    box.innerHTML = '';
+    COLORS.forEach(c => {
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'sw'; b.style.background = c; b.dataset.c = c;
+      b.setAttribute('aria-label', c);
+      b.addEventListener('click', () => { set(c); paint(); });
+      box.append(b);
+    });
+    const paint = () => box.querySelectorAll('.sw').forEach(b => b.classList.toggle('on', b.dataset.c === get()));
+    paint();
+    return paint;
+  }
+  makeSwatches($('#penColors'), () => penColor, c => {
+    penColor = c;
+    if (mode !== 'pen' && mode !== 'text') setMode('pen');
+  });
+
+  function setMode(m) {
+    mode = m; sheet.dataset.mode = m;
+    $('#modes').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.mode === m));
+    $('#hint').textContent = HINTS[m];
+  }
+  $('#modes').addEventListener('click', e => { const b = e.target.closest('button'); if (b) setMode(b.dataset.mode); });
+  $('#sizes').addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    penSize = +b.dataset.size;
+    $('#sizes').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
+  });
+  setMode('edit');
+
+  function undo() {
+    const h = history.pop(); if (!h) { toast('되돌릴 게 없어요'); return; }
+    if (h.type === 'stroke') {
+      const i = strokes.indexOf(h.ref); if (i >= 0) strokes.splice(i, 1);
+      renderInk();
+    } else if (h.type === 'note') {
+      removeNote(h.ref);
+    }
+  }
+  $('#undoBtn').addEventListener('click', undo);
+  document.addEventListener('keydown', e => {
+    const tag = document.activeElement?.tagName;
+    if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'z' && tag !== 'INPUT' && tag !== 'TEXTAREA') {
+      e.preventDefault(); undo();
+    }
+  });
+
+  // ---- 펜 / 지우개 ----
+  const toUnits = e => {
+    const r = sheet.getBoundingClientRect();
+    return [(e.clientX - r.left) / r.width * L.W, (e.clientY - r.top) / r.height * L.H];
+  };
+  let cur = null;
+  ink.addEventListener('pointerdown', e => {
+    if (mode !== 'pen' && mode !== 'erase') return;
+    e.preventDefault();
+    ink.setPointerCapture(e.pointerId);
+    const p = toUnits(e);
+    cur = {
+      pts: [p], erase: mode === 'erase',
+      color: penColor, size: mode === 'erase' ? Math.max(24, penSize * 4) : penSize,
+    };
+    strokes.push(cur); history.push({ type: 'stroke', ref: cur });
+    drawSeg(cur, p, p);
+  });
+  ink.addEventListener('pointermove', e => {
+    if (!cur) return;
+    const evs = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
+    for (const ev of (evs.length ? evs : [e])) {
+      const p = toUnits(ev), last = cur.pts[cur.pts.length - 1];
+      if (Math.hypot(p[0] - last[0], p[1] - last[1]) < 1) continue;
+      cur.pts.push(p); drawSeg(cur, last, p);
+    }
+  });
+  const endStroke = () => { cur = null; };
+  ink.addEventListener('pointerup', endStroke);
+  ink.addEventListener('pointercancel', endStroke);
+
+  // ---- 자유 글자 ----
+  ink.addEventListener('click', e => {
+    if (mode !== 'text') return;
+    const [x, y] = toUnits(e);
+    openNote(null, x, y);
+  });
+
+  function renderNote(n) {
+    if (!n.el) {
+      n.el = document.createElement('div');
+      n.el.className = 'note';
+      sheet.append(n.el);
+      bindNote(n);
+    }
+    Object.assign(n.el.style, { left: u(n.x), top: u(n.y), color: n.color, fontSize: u(n.size) });
+    n.el.textContent = n.text;
+  }
+  function removeNote(n) {
+    const i = notes.indexOf(n); if (i >= 0) notes.splice(i, 1);
+    n.el?.remove(); n.el = null;
+  }
+  function bindNote(n) {
+    let drag = null;
+    n.el.addEventListener('pointerdown', e => {
+      if (mode === 'pen' || mode === 'erase') return;
+      e.preventDefault(); e.stopPropagation();
+      n.el.setPointerCapture(e.pointerId);
+      const r = sheet.getBoundingClientRect();
+      drag = { sx: e.clientX, sy: e.clientY, ox: n.x, oy: n.y, k: L.W / r.width, moved: false };
+    });
+    n.el.addEventListener('pointermove', e => {
+      if (!drag) return;
+      const dx = e.clientX - drag.sx, dy = e.clientY - drag.sy;
+      if (!drag.moved && Math.hypot(dx, dy) < 5) return;
+      drag.moved = true;
+      n.x = clamp(drag.ox + dx * drag.k, -20, L.W - 30);
+      n.y = clamp(drag.oy + dy * drag.k, -20, L.H - 30);
+      renderNote(n);
+    });
+    const up = () => { if (!drag) return; const moved = drag.moved; drag = null; if (!moved) openNote(n); };
+    n.el.addEventListener('pointerup', up);
+    n.el.addEventListener('pointercancel', () => { drag = null; });
+    n.el.addEventListener('click', e => e.stopPropagation());
+  }
+
+  const noteDlg = $('#noteDlg'), noteText = $('#noteText');
+  let noteTarget = null, noteNewPos = null, noteColor = COLORS[0], noteSize = 40;
+  const paintNoteColors = makeSwatches($('#noteColors'), () => noteColor, c => { noteColor = c; });
+  const paintNoteSizes = () => $('#noteSizes').querySelectorAll('button')
+    .forEach(b => b.classList.toggle('on', +b.dataset.size === noteSize));
+  $('#noteSizes').addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    noteSize = +b.dataset.size; paintNoteSizes();
+  });
+
+  function openNote(n, x, y) {
+    noteTarget = n;
+    noteNewPos = n ? null : { x, y };
+    noteText.value = n ? n.text : '';
+    noteColor = n ? n.color : penColor;
+    noteSize = n ? n.size : 40;
+    paintNoteColors(); paintNoteSizes();
+    $('#noteDel').style.visibility = n ? 'visible' : 'hidden';
+    noteDlg.showModal();
+    setTimeout(() => noteText.focus(), 50);
+  }
+  $('#noteForm').addEventListener('submit', () => {
+    const text = noteText.value.replace(/\s+$/, '');
+    if (noteTarget) {
+      if (!text.trim()) removeNote(noteTarget);
+      else { Object.assign(noteTarget, { text, color: noteColor, size: noteSize }); renderNote(noteTarget); }
+    } else if (text.trim() && noteNewPos) {
+      const n = {
+        text, color: noteColor, size: noteSize,
+        x: clamp(noteNewPos.x, 0, L.W - 30),
+        y: clamp(noteNewPos.y - noteSize * 0.625, 0, L.H - 30),
+      };
+      notes.push(n); history.push({ type: 'note', ref: n });
+      renderNote(n);
+    }
+    noteTarget = null; noteNewPos = null;
+  });
+  $('#noteCancel').addEventListener('click', () => { noteTarget = null; noteDlg.close(); });
+  $('#noteDel').addEventListener('click', () => { if (noteTarget) removeNote(noteTarget); noteTarget = null; noteDlg.close(); });
 
   // ---- 이미지 ----
   let current = null;
@@ -365,7 +660,19 @@
         ctx.fillText(t, secX[r], L.rows[r] - 41 + 1);
       });
 
+      if (strokes.length) {
+        const layer = document.createElement('canvas');
+        layer.width = cv.width; layer.height = cv.height;
+        const lctx = layer.getContext('2d');
+        lctx.scale(S, S);
+        strokes.forEach(st => drawStroke(lctx, st));
+        ctx.drawImage(layer, 0, 0, L.W, L.H);
+        layer.width = layer.height = 0;
+      }
+      drawNotes(ctx);
+
       const blob = await new Promise(res => cv.toBlob(res, 'image/png'));
+      cv.width = cv.height = 0;
       const fname = '캐굴리기_난이도표.png';
       const file = new File([blob], fname, { type: 'image/png' });
       const touch = matchMedia('(pointer: coarse)').matches;
@@ -388,9 +695,12 @@
   });
 
   $('#resetBtn').addEventListener('click', () => {
-    if (!confirm('입력한 이미지와 글을 모두 지울까요?')) return;
+    if (!confirm('이미지, 글, 그림을 모두 지울까요?')) return;
     cells.forEach(c => { setImg(c, null); c.name.value = ''; });
     sections.forEach(s => s.value = '');
+    strokes.length = 0; history.length = 0;
+    [...notes].forEach(removeNote);
+    renderInk();
   });
 
   let toastTimer;
@@ -401,7 +711,7 @@
 
   // ---- 시작 ----
   const fontsReady = Promise.all(
-    ['900 86px', '800 19px', '600 35px', '600 34px', '500 32px', '500 26px', '500 22px']
+    ['900 86px', '800 19px', '600 35px', '600 34px', '600 40px', '500 32px', '500 26px', '500 22px']
       .map(f => document.fonts.load(`${f} Pretendard`))
   ).catch(() => {});
 
